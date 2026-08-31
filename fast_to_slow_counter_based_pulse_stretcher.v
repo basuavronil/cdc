@@ -20,12 +20,14 @@ module cdc_fast_to_slow (
             if (pulse_fast)
                 stretch_cnt <= 4'd8;  // stretch for 8 fast cycles
             else if (stretch_cnt != 0)
-                stretch_cnt <= stretch_cnt - 1;
-
-            stretched <= (stretch_cnt != 0);
+                begin
+                 stretch_cnt <= stretch_cnt - 1;
+                 stretched <= 1'd1;
+                end
+            else 
+                stretched <= 1'd0;
         end
     end
-
     // ----------------------------------
     // 2-FF Synchronizer (SLOW DOMAIN)
     // ----------------------------------

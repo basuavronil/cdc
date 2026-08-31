@@ -1,102 +1,44 @@
-module cdc_toggle_sync (
-    input  wire clk_fast,
-    input  wire clk_slow,
-    input  wire rst_n,
-    input  wire pulse_fast,
-    output wire pulse_slow   // one pulse per event
+module abc(
+  input wire fast_clk,
+  input wire slow_clk,
+  input wire rst,
+  input wire pulse_in,
+  output wire pulse_out
 );
 
-    // ----------------------------------
-    // FAST DOMAIN: Toggle Generator
-    // ----------------------------------
-    reg toggle;
+  reg [3:0] counter;
+  reg p_stretcher;
+  reg sync_ff1, sync_ff2;
 
-    always @(posedge clk_fast or negedge rst_n) begin
-        if (!rst_n)
-            toggle <= 1'b0;
-        else if (pulse_fast)
-            toggle <= ~toggle;   // toggle on every pulse
+  // Pulse Stretcher on fast_clk
+  always @(posedge fast_clk or negedge rst) begin
+    if (!rst) begin
+      counter     <= 4'd0;
+      p_stretcher <= 1'b0;
+    end else begin
+      if (pulse_in) begin
+        counter     <= 4'd10;
+        p_stretcher <= 1'b1; // Output high immediately on trigger
+      end else if (counter != 4'd0) begin
+        counter     <= counter - 1'b1;
+        p_stretcher <= 1'b1;
+      end else begin
+        p_stretcher <= 1'b0;
+      end
     end
+  end
 
-    // ----------------------------------
-    // SLOW DOMAIN: Synchronizer
-    // ----------------------------------
-    reg sync_ff1, sync_ff2;
-
-    always @(posedge clk_slow or negedge rst_n) begin
-        if (!rst_n) begin
-            sync_ff1 <= 0;
-            sync_ff2 <= 0;
-        end else begin
-            sync_ff1 <= toggle;
-            sync_ff2 <= sync_ff1;
-        end
+  // 2-Flip-Flop Synchronizer on slow_clk
+  always @(posedge slow_clk or negedge rst) begin
+    if (!rst) begin
+      sync_ff1 <= 1'b0;
+      sync_ff2 <= 1'b0;
+    end else begin
+      sync_ff1 <= p_stretcher;
+      sync_ff2 <= sync_ff1;
     end
+  end
 
-    // ----------------------------------
-    // EDGE DETECTION (Pulse generation)
-    // ----------------------------------
-    assign pulse_slow = sync_ff1 ^ sync_ff2;
-
-endmodule
-
-//testbench
-`timescale 1ns/1ps
-
-module tb_toggle_sync;
-
-    reg clk_fast;
-    reg clk_slow;
-    reg rst_n;
-    reg pulse_fast;
-
-    wire pulse_slow;
-
-    cdc_toggle_sync dut (
-        .clk_fast(clk_fast),
-        .clk_slow(clk_slow),
-        .rst_n(rst_n),
-        .pulse_fast(pulse_fast),
-        .pulse_slow(pulse_slow)
-    );
-
-    // Fast clock (4ns)
-    initial begin
-        clk_fast = 0;
-        forever #2 clk_fast = ~clk_fast;
-    end
-
-    // Slow clock (20ns)
-    initial begin
-        clk_slow = 0;
-        forever #10 clk_slow = ~clk_slow;
-    end
-
-    initial begin
-        rst_n = 0;
-        pulse_fast = 0;
-
-        #20;
-        rst_n = 1;
-
-        // Generate multiple close pulses
-        repeat (6) begin
-    @(posedge clk_fast);
-    pulse_fast = 1;
-
-    @(posedge clk_fast);
-    pulse_fast = 0;
-
-    repeat (10) @(posedge clk_fast); // increase gap
-end
-
-        #2000;
-        $finish;
-    end
-
-    initial begin
-        $monitor("T=%0t | fast=%b | slow=%b",
-                 $time, pulse_fast, pulse_slow);
-    end
+  assign pulse_out = sync_ff2;
 
 endmodule
